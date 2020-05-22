@@ -3,7 +3,7 @@ import time
 import argparse
 
 from heat import init_fields, write_field, iterate
-
+from cy_heat import iterate1
 
 def main(input_file='bottle.dat', a=0.5, dx=0.1, dy=0.1, 
          timesteps=200, image_interval=4000):
@@ -25,7 +25,7 @@ def main(input_file='bottle.dat', a=0.5, dx=0.1, dy=0.1,
     write_field(field, 0)
     # Iterate
     t0 = time.time()
-    iterate(field, field0, a, dx, dy, timesteps, image_interval)
+    iterate1(field, field0, a, dx, dy, timesteps, image_interval)
     t1 = time.time()
     # Plot/save final field
     write_field(field, timesteps)

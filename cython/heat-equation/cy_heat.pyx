@@ -2,31 +2,45 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
-from _my_cheat import lib, ffi
+import cython
+cimport numpy as cnp # Import for NumPY C-API
 
 # Set the colormap
 plt.rcParams['image.cmap'] = 'BrBG'
 
-def evolve(u, u_previous, a, dt, dx2, dy2):
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef evolve(u, u_previous, double a, double dt, double dx2, double dy2):
     """Explicit time evolution.
        u:            new temperature field
        u_previous:   previous field
        a:            diffusion constant
        dt:           time step. """
 
+    cdef int n, m
     n, m = u.shape
+
+    cdef cnp.ndarray[cnp.double_t, ndim=2] cnp_u, cnp_u_previous
+    #cnp_u = np.empty((n, m), dtype=double)
+    cnp_u = u
+
+    #cnp_u_previous = np.empty((n, m), dtype=float)
+    cnp_u_previous = u_previous
+
+    cdef int i, j
 
     for i in range(1, n-1):
         for j in range(1, m-1):
-            u[i, j] = u_previous[i, j] + a * dt * ( \
-             (u_previous[i+1, j] - 2*u_previous[i, j] + \
-              u_previous[i-1, j]) / dx2 + \
-             (u_previous[i, j+1] - 2*u_previous[i, j] + \
-                 u_previous[i, j-1]) / dy2 )
-    u_previous[:] = u[:]
+            cnp_u[i, j] = cnp_u_previous[i, j] + a * dt * ( \
+             (cnp_u_previous[i+1, j] - 2*cnp_u_previous[i, j] + \
+              cnp_u_previous[i-1, j]) / dx2 + \
+             (cnp_u_previous[i, j+1] - 2*cnp_u_previous[i, j] + \
+                 cnp_u_previous[i, j-1]) / dy2 )
+    cnp_u_previous[:] = cnp_u[:]
 
-def iterate(field, field0, a, dx, dy, timesteps, image_interval):
+
+
+def iterate1(field, field0, a, dx, dy, timesteps, image_interval):
     """Run fixed number of time steps of heat equation"""
 
     dx2 = dx**2
@@ -34,15 +48,10 @@ def iterate(field, field0, a, dx, dy, timesteps, image_interval):
 
     # For stability, this is the largest interval possible
     # for the size of the time-step:
-    dt = dx2*dy2 / ( 2*a*(dx2+dy2) )
-
-    uptr = ffi.cast("double *", ffi.from_buffer(field))
-    u_prevptr = ffi.cast("double *", ffi.from_buffer(field0))
-    nx, ny = field.shape
+    dt = dx2*dy2 / ( 2*a*(dx2+dy2) )    
 
     for m in range(1, timesteps+1):
-        lib.evolve(uptr, u_prevptr, nx, ny, a, dt, dx2, dy2)
-        # evolve(field, field0, a, dt, dx2, dy2)
+        evolve(field, field0, a, dt, dx2, dy2)
         if m % image_interval == 0:
             write_field(field, m)
 

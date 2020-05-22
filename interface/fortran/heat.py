@@ -3,6 +3,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+from fortran_evolve import evolve as evolve1
+
+
 # Set the colormap
 plt.rcParams['image.cmap'] = 'BrBG'
 
@@ -35,7 +38,7 @@ def iterate(field, field0, a, dx, dy, timesteps, image_interval):
     dt = dx2*dy2 / ( 2*a*(dx2+dy2) )    
 
     for m in range(1, timesteps+1):
-        evolve(field, field0, a, dt, dx2, dy2)
+        evolve1(field, field0, a, dt, dx2, dy2)
         if m % image_interval == 0:
             write_field(field, m)
 
