@@ -33,12 +33,11 @@ size = comm.Get_size()
 # Up/down neighbouring MPI ranks
 up = rank - 1
 down = rank + 1
-# TODO: if at the edge of the grid, use MPI.PROC_NULL
-if rank == 0:
+# if at the edge of the grid, use MPI.PROC_NULL
+if up < 0:
     up = MPI.PROC_NULL
-if rank == size - 1:
-    down == MPI.PROC_NULL
-
+if down > size - 1:
+    down = MPI.PROC_NULL
 
 def evolve(u, u_previous, a, dt, dx2, dy2):
     """Explicit time evolution.
@@ -72,12 +71,12 @@ def exchange(field):
     # select border rows from the field and add MPI calls to
     # exchange them with the neighbouring tasks
     # send down, receive from up
-    sbuf = field[-1,:]  # last row of real data
-    rbuf = np.empty(sbuf.shape, dtype=sbuf.dtype)  # ghost row
+    sbuf = field[-2,:]  # last row of real data
+    rbuf = field[0,:]  # ghost row
     comm.Sendrecv(sbuf, dest=down, recvbuf=rbuf, source=up)
     # send up, receive from down
-    sbuf = field[0,:]  # first row of real data
-    rbuf = np.empty(sbuf.shape, dtype=sbuf.dtype)  # ghost row
+    sbuf = field[1,:]  # first row of real data
+    rbuf = field[-1,:]  # ghost row
     comm.Sendrecv(sbuf, dest=up, recvbuf=rbuf, source=down)
 
 def iterate(field, local_field, local_field0, timesteps, image_interval):
@@ -85,8 +84,8 @@ def iterate(field, local_field, local_field0, timesteps, image_interval):
         exchange(local_field0)
         evolve(local_field, local_field0, a, dt, dx2, dy2)
         if m % image_interval == 0:
-            # TODO: gather partial fields to reconstruct the full field
-            comm.Gather(...)
+            # gather partial fields to reconstruct the full field
+            comm.Gather(local_field[1:-1,:], field, root=0)
             if rank == 0:
                 write_field(field, m)
 
@@ -97,24 +96,29 @@ def main():
         field, field0 = init_fields('bottle.dat')
         shape = field.shape
         dtype = field.dtype
-        # TODO: send the shape and dtype to everyone else
+        # send the shape and dtype to everyone else
+        comm.bcast(shape, 0)
+        comm.bcast(dtype, 0)
     else:
         field = None
-        # TODO: receive the shape and dtype
+        # receive the shape and dtype
+        shape = comm.bcast(None, 0)
+        dtype = comm.bcast(None, 0)
     if shape[0] % size:
         raise ValueError('Number of rows in the temperature field (' \
                 + str(shape[0]) + ') needs to be divisible by the number ' \
                 + 'of MPI tasks (' + str(size) + ').')
-    n = shape[0] / size  # number of rows for each MPI task
+    n = int(shape[0] / size)  # number of rows for each MPI task
     m = shape[1]         # number of columns in the field
 
-    # TODO: scatter a portion of the field to each MPI task
-    buff = ... # receive buffer for (n,m) elements of dtype
-    comm.Scatter(...)
+    # scatter a portion of the field to each MPI task
+    buff = np.zeros((n, m), dtype=dtype) # receive buffer for (n,m) elements of dtype
+    comm.Scatter(field, buff, 0)
 
-    # TODO: construct local field based on the received data
-    #       Note: remember to add two ghost rows (one on each side)
-    local_field = ...
+    # construct local field based on the received data
+    # Note: remember to add two ghost rows (one on each side)
+    local_field = np.zeros((n+2, m), dtype=dtype)
+    local_field[1:-1,:] = buff
 
     local_field0 = np.zeros_like(local_field)  # array for previous time step
     # Fix outer boundary ghost layers to account for aperiodicity?
@@ -133,8 +137,8 @@ def main():
     iterate(field, local_field, local_field0, timesteps, image_interval)
     t1 = time.time()
     # Plot/save final field
-    # TODO: gather partial fields to reconstruct the full field
-    comm.Gather(...)
+    # gather partial fields to reconstruct the full field
+    comm.Gather(local_field[1:-1,:], field, root=0)
     if rank == 0:
         write_field(field, timesteps)
         print("Running time: {0}".format(t1-t0))
