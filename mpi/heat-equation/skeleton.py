@@ -1,7 +1,7 @@
 from __future__ import print_function
 import numpy as np
 import time
-# TODO: initialise MPI by importing it
+from mpi4py import MPI
 
 import matplotlib
 matplotlib.use('Agg')
@@ -26,12 +26,19 @@ dy2 = dy**2
 dt = dx2*dy2 / ( 2*a*(dx2+dy2) )
 
 # MPI globals
-# TODO: find out your rank and communicator size
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
 
 # Up/down neighbouring MPI ranks
 up = rank - 1
 down = rank + 1
 # TODO: if at the edge of the grid, use MPI.PROC_NULL
+if rank == 0:
+    up = MPI.PROC_NULL
+if rank == size - 1:
+    down == MPI.PROC_NULL
+
 
 def evolve(u, u_previous, a, dt, dx2, dy2):
     """Explicit time evolution.
@@ -62,16 +69,16 @@ def write_field(field, step):
     plt.savefig('heat_{0:03d}.png'.format(step))
 
 def exchange(field):
-    # TODO: select border rows from the field and add MPI calls to
-    #       exchange them with the neighbouring tasks
+    # select border rows from the field and add MPI calls to
+    # exchange them with the neighbouring tasks
     # send down, receive from up
-    sbuf = ...  # last row of real data
-    rbuf = ...  # ghost row
-    comm.Sendrecv(...)
+    sbuf = field[-1,:]  # last row of real data
+    rbuf = np.empty(sbuf.shape, dtype=sbuf.dtype)  # ghost row
+    comm.Sendrecv(sbuf, dest=down, recvbuf=rbuf, source=up)
     # send up, receive from down
-    sbuf = ...  # first row of real data
-    rbuf = ...  # ghost row
-    comm.Sendrecv(...)
+    sbuf = field[0,:]  # first row of real data
+    rbuf = np.empty(sbuf.shape, dtype=sbuf.dtype)  # ghost row
+    comm.Sendrecv(sbuf, dest=up, recvbuf=rbuf, source=down)
 
 def iterate(field, local_field, local_field0, timesteps, image_interval):
     for m in range(1, timesteps+1):
